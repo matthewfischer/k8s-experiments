@@ -1,0 +1,93 @@
+---
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: openstack-keystone
+  labels:
+    app: keystone
+spec:
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: keystone
+    spec:
+      containers:
+      - image: krystism/openstack-keystone
+        name: keystone
+        ports:
+        - containerPort: 35357
+          protocol: TCP
+        - containerPort: 5000
+          protocol: TCP
+        env:
+        - name: OS_TENANT_NAME
+          value: admin
+        - name: OS_USERNAME
+          value: admin
+        # XXX this should use secrets - http://kubernetes.io/docs/user-guide/secrets/
+        - name: OS_PASSWORD
+          value: secret_admin_pass
+      - image: mysql:5.7
+        name: mysql-db
+        ports:
+        - containerPort: 3306
+          protocol: TCP
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          value: something_secret
+        volumeMounts:
+        - name: mysql-storage
+          mountPath: /var/lib/mysql
+      volumes:
+      - name: mysql-storage
+        persistentVolumeClaim:
+          claimName: mysql-claim
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-claim
+  labels:
+    type: local
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: localpv
+  labels:
+    type: local
+spec:
+  capacity:
+    storage: 2Gi
+  accessModes:
+    - ReadWriteOnce
+  hostPath:
+    path: "/var/localpv"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: keystone
+  labels:
+    app: keystone
+spec:
+  ports:
+  - name: keystone-admin
+    port: 35357
+    targetPort: 35357
+    protocol: TCP
+  - name: keystone-main
+    port: 5000
+    targetPort: 5000
+    protocol: TCP
+  sessionAffinity: ClientIP
+  selector:
+    app: keystone
